@@ -1,0 +1,2182 @@
+{
+  "info": {
+    "name": "Bitácora de Viajes API v1",
+    "description": "API REST del Obligatorio 1 - Desarrollo Full Stack integrado con IA.\n\nCorrer la colección completa en orden con el Collection Runner: cada request guarda en variables de colección los datos que necesitan los siguientes (tokens, ids).\n\nAntes de correrla, completar la variable admin_password con la contraseña del administrador precargado por el seed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "description": "Rutas públicas: registro y login. Solo se puede registrar el perfil 'usuario'; el admin viene precargado por el seed.",
+      "item": [
+        {
+          "name": "Registro - datos inválidos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/registro",
+            "description": "Campos vacíos o con formato incorrecto: Joi responde 400 con todos los errores juntos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"\",\n    \"username\": \"con espacios\",\n    \"email\": \"no-es-un-email\",\n    \"password\": \"123\",\n    \"confirmPassword\": \"456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Datos únicos por corrida, para poder correr la colección varias veces seguidas.",
+                  "const sufijo = Date.now().toString().slice(-8);",
+                  "pm.collectionVariables.set(\"sufijo\", sufijo);",
+                  "pm.collectionVariables.set(\"user_username\", \"viajero\" + sufijo);",
+                  "pm.collectionVariables.set(\"user_email\", \"viajero\" + sufijo + \"@test.com\");",
+                  "pm.collectionVariables.set(\"user_password\", \"Viajero123\");",
+                  "pm.collectionVariables.set(\"user_b_username\", \"otro\" + sufijo);",
+                  "pm.collectionVariables.set(\"user_b_email\", \"otro\" + sufijo + \"@test.com\");",
+                  "// Fechas dentro de la ventana del pronóstico del clima (dentro de 2 a 5 días).",
+                  "const dia = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);",
+                  "pm.collectionVariables.set(\"fecha_inicio_proxima\", dia(2));",
+                  "pm.collectionVariables.set(\"fecha_fin_proxima\", dia(5));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: El nombre es obligatorio\", () => pm.expect(pm.response.json().mensaje).to.include(\"El nombre es obligatorio\"));",
+                  "pm.test(\"Mensaje de error: El correo electrónico no tiene un formato válido\", () => pm.expect(pm.response.json().mensaje).to.include(\"El correo electrónico no tiene un formato válido\"));",
+                  "pm.test(\"Mensaje de error: Las contraseñas no coinciden\", () => pm.expect(pm.response.json().mensaje).to.include(\"Las contraseñas no coinciden\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro - intento de asignarse role (no permitido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/registro",
+            "description": "Mass assignment: el cliente no puede elegir su rol ni su plan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Pirata\",\n    \"username\": \"pirata{{sufijo}}\",\n    \"email\": \"pirata{{sufijo}}@test.com\",\n    \"password\": \"Viajero123\",\n    \"confirmPassword\": \"Viajero123\",\n    \"role\": \"administrador\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: role no está permitido\", () => pm.expect(pm.response.json().mensaje).to.include(\"role no está permitido\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro - exitoso",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/registro",
+            "description": "Crea el usuario con role 'usuario' y plan 'plus' asignados por el servidor. Guarda el token para los siguientes requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Viajero de Prueba\",\n    \"username\": \"{{user_username}}\",\n    \"email\": \"{{user_email}}\",\n    \"password\": \"{{user_password}}\",\n    \"confirmPassword\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve token\", () => pm.expect(json.token).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"Role usuario y plan plus asignados por el servidor\", () => {",
+                  "    pm.expect(json.user.role).to.eql(\"usuario\");",
+                  "    pm.expect(json.user.plan).to.eql(\"plus\");",
+                  "});",
+                  "pm.test(\"No expone la contraseña\", () => pm.expect(json.user).to.not.have.property(\"password\"));",
+                  "pm.test(\"Devuelve los datos enviados\", () => pm.expect(json.user.username).to.eql(pm.collectionVariables.get(\"user_username\")));",
+                  "pm.collectionVariables.set(\"token_user\", json.token);",
+                  "pm.collectionVariables.set(\"user_id\", json.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro - usuario duplicado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/registro",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Viajero de Prueba\",\n    \"username\": \"{{user_username}}\",\n    \"email\": \"{{user_email}}\",\n    \"password\": \"{{user_password}}\",\n    \"confirmPassword\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Mensaje de error: Ya existe un usuario registrado\", () => pm.expect(pm.response.json().mensaje).to.include(\"Ya existe un usuario registrado\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Registro - segundo usuario (B)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/registro",
+            "description": "Usuario B: se usa para comprobar que un usuario no puede ver ni modificar los viajes de otro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Otro Viajero\",\n    \"username\": \"{{user_b_username}}\",\n    \"email\": \"{{user_b_email}}\",\n    \"password\": \"{{user_password}}\",\n    \"confirmPassword\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set(\"token_user_b\", json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - sin contraseña",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/login",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"identificador\": \"{{user_username}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: La contraseña es obligatoria\", () => pm.expect(pm.response.json().mensaje).to.include(\"La contraseña es obligatoria\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - credenciales inválidas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/login",
+            "description": "Mismo mensaje para usuario inexistente o contraseña incorrecta, para no revelar qué usuarios existen.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"identificador\": \"{{user_username}}\",\n    \"password\": \"Incorrecta123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Mensaje de error: Credenciales inválidas\", () => pm.expect(pm.response.json().mensaje).to.include(\"Credenciales inválidas\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - exitoso con email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/login",
+            "description": "El identificador puede ser el username o el email.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"identificador\": \"{{user_email}}\",\n    \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve token y usuario\", () => {",
+                  "    pm.expect(json.token).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(json.user.username).to.eql(pm.collectionVariables.get(\"user_username\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"token_user\", json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - administrador (precargado por seed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/auth/login",
+            "description": "Completar la variable de colección admin_password antes de correr la colección.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"identificador\": \"{{admin_identificador}}\",\n    \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Role administrador\", () => pm.expect(json.user.role).to.eql(\"administrador\"));",
+                  "pm.collectionVariables.set(\"token_admin\", json.token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Tipos de viaje (categorías)",
+      "description": "Consulta abierta a cualquier usuario logueado; alta, modificación y baja solo para administrador.",
+      "item": [
+        {
+          "name": "Listar - sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Mensaje de error: token\", () => pm.expect(pm.response.json().mensaje).to.include(\"token\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - usuario",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve un array\", () => pm.expect(json).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - como usuario (sin permisos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nombre\": \"No debería crearse\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"Mensaje de error: permisos de administrador\", () => pm.expect(pm.response.json().mensaje).to.include(\"permisos de administrador\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - nombre vacío",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nombre\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: El nombre de la categoría es obligatorio\", () => pm.expect(pm.response.json().mensaje).to.include(\"El nombre de la categoría es obligatorio\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - exitoso",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nombre\": \"Montaña {{sufijo}}\",\n    \"descripcion\": \"Categoría creada desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve la categoría con id\", () => {",
+                  "    pm.expect(json.id).to.be.a(\"string\");",
+                  "    pm.expect(json.nombre).to.eql(\"Montaña \" + pm.collectionVariables.get(\"sufijo\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"tipo_id\", json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - nombre duplicado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nombre\": \"Montaña {{sufijo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Mensaje de error: Ya existe un tipo de viaje con ese nombre\", () => pm.expect(pm.response.json().mensaje).to.include(\"Ya existe un tipo de viaje con ese nombre\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Es la categoría pedida\", () => pm.expect(json.id).to.eql(pm.collectionVariables.get(\"tipo_id\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener - id con formato inválido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/123",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: El id no tiene un formato válido\", () => pm.expect(pm.response.json().mensaje).to.include(\"El id no tiene un formato válido\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener - id inexistente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/aaaaaaaaaaaaaaaaaaaaaaaa",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Mensaje de error: Tipo de viaje no encontrado\", () => pm.expect(pm.response.json().mensaje).to.include(\"Tipo de viaje no encontrado\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar - exitoso",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_id}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"descripcion\": \"Descripción actualizada desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Se actualizó la descripción\", () => pm.expect(json.descripcion).to.eql(\"Descripción actualizada desde Postman\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar - sin campos",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_id}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: Enviar al menos un campo para actualizar\", () => pm.expect(pm.response.json().mensaje).to.include(\"Enviar al menos un campo para actualizar\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Viajes - alta y límite del plan plus",
+      "description": "Un usuario plus puede cargar hasta 4 viajes. El 5º falla por límite hasta que cambia a premium (carpeta 4).",
+      "item": [
+        {
+          "name": "Crear - sin token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Sin token\",\n    \"destino\": \"Bariloche, Argentina\",\n    \"fechaInicio\": \"2026-07-10\",\n    \"fechaFin\": \"2026-07-15\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - fechaFin anterior a fechaInicio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Fechas al revés\",\n    \"destino\": \"Bariloche, Argentina\",\n    \"fechaInicio\": \"2026-07-15\",\n    \"fechaFin\": \"2026-07-10\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: fechaFin no puede ser anterior a fechaInicio\", () => pm.expect(pm.response.json().mensaje).to.include(\"fechaFin no puede ser anterior a fechaInicio\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - tipo de viaje inexistente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Tipo inexistente\",\n    \"destino\": \"Bariloche, Argentina\",\n    \"fechaInicio\": \"2026-07-10\",\n    \"fechaFin\": \"2026-07-15\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"aaaaaaaaaaaaaaaaaaaaaaaa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: El tipo de viaje indicado no existe\", () => pm.expect(pm.response.json().mensaje).to.include(\"El tipo de viaje indicado no existe\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear - intento de asignar otro dueño (no permitido)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Dueño ajeno\",\n    \"destino\": \"Bariloche, Argentina\",\n    \"fechaInicio\": \"2026-07-10\",\n    \"fechaFin\": \"2026-07-15\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\",\n    \"usuario\": \"aaaaaaaaaaaaaaaaaaaaaaaa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: usuario no está permitido\", () => pm.expect(pm.response.json().mensaje).to.include(\"usuario no está permitido\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 1 de 4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "Fechas próximas (calculadas en el primer request) para que el endpoint de clima devuelva pronóstico real.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Escapada a Bariloche\",\n    \"destino\": \"Bariloche, Argentina\",\n    \"fechaInicio\": \"{{fecha_inicio_proxima}}\",\n    \"fechaFin\": \"{{fecha_fin_proxima}}\",\n    \"notas\": \"Quiero esquiar y probar <b>chocolate</b> artesanal\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"El dueño es el usuario del token\", () => pm.expect(json.usuario).to.eql(pm.collectionVariables.get(\"user_id\")));",
+                  "pm.test(\"Devuelve la categoría completa (populate)\", () => pm.expect(json.tipoDeViaje.nombre).to.be.a(\"string\"));",
+                  "pm.test(\"Las notas se guardan sin HTML (anti XSS)\", () => pm.expect(json.notas).to.eql(\"Quiero esquiar y probar chocolate artesanal\"));",
+                  "pm.collectionVariables.set(\"viaje_id\", json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 2 de 4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Verano en Punta\",\n    \"destino\": \"Punta del Este, Uruguay\",\n    \"fechaInicio\": \"2026-01-10\",\n    \"fechaFin\": \"2026-01-15\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 3 de 4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Roma clásica\",\n    \"destino\": \"Roma, Italia\",\n    \"fechaInicio\": \"2025-05-01\",\n    \"fechaFin\": \"2025-05-08\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 4,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 4 de 4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Tapas en Madrid\",\n    \"destino\": \"Madrid, España\",\n    \"fechaInicio\": \"2025-10-03\",\n    \"fechaFin\": \"2025-10-06\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 3,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 5 - falla por límite del plan plus",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Quinto viaje\",\n    \"destino\": \"Cusco, Perú\",\n    \"fechaInicio\": \"2026-03-01\",\n    \"fechaFin\": \"2026-03-07\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"Mensaje de error: El plan plus permite hasta 4 viajes\", () => pm.expect(pm.response.json().mensaje).to.include(\"El plan plus permite hasta 4 viajes\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Plan de usuario",
+      "description": "Cambio de plan plus a premium. Solo para usuarios en plan plus; el admin no gestiona planes.",
+      "item": [
+        {
+          "name": "Cambiar a premium - sin token",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{prod_base_url}}/usuarios/plan",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar a premium - administrador",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/usuarios/plan",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"Mensaje de error: El administrador no tiene plan\", () => pm.expect(pm.response.json().mensaje).to.include(\"El administrador no tiene plan\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar a premium - exitoso",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/usuarios/plan",
+            "description": "Devuelve un token nuevo con el plan actualizado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"El plan ahora es premium\", () => pm.expect(json.user.plan).to.eql(\"premium\"));",
+                  "pm.test(\"Devuelve un token nuevo\", () => pm.expect(json.token).to.be.a(\"string\").and.not.empty);",
+                  "pm.collectionVariables.set(\"token_user\", json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cambiar a premium - ya es premium",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/usuarios/plan",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Mensaje de error: ya tiene plan premium\", () => pm.expect(pm.response.json().mensaje).to.include(\"ya tiene plan premium\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje 5 - ahora sí, con plan premium",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Quinto viaje\",\n    \"destino\": \"Cusco, Perú\",\n    \"fechaInicio\": \"2026-03-01\",\n    \"fechaFin\": \"2026-03-07\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Se creó el 5º viaje\", () => pm.expect(json.titulo).to.eql(\"Quinto viaje\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Viajes - consultas, filtros y modificación",
+      "description": "Consultas paginadas y con filtros. Cada usuario ve solo lo suyo; el admin ve todo.",
+      "item": [
+        {
+          "name": "Listar - usuario (paginado por defecto)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve viajes y datos de paginación\", () => {",
+                  "    pm.expect(json.viajes).to.be.an(\"array\");",
+                  "    pm.expect(json.paginacion).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"Tiene sus 5 viajes\", () => pm.expect(json.paginacion.total).to.eql(5));",
+                  "pm.test(\"Todos los viajes son del usuario\", () => json.viajes.forEach((v) => pm.expect(v.usuario).to.eql(pm.collectionVariables.get(\"user_id\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - página 2 de a 2 resultados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes?page=2&limit=2",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve 2 viajes\", () => pm.expect(json.viajes).to.have.lengthOf(2));",
+                  "pm.test(\"Calcula bien la paginación\", () => {",
+                  "    pm.expect(json.paginacion.page).to.eql(2);",
+                  "    pm.expect(json.paginacion.totalPages).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - filtro por destino",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes?destino=roma",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Encuentra el viaje sin importar mayúsculas\", () => pm.expect(json.viajes.length).to.be.at.least(1));",
+                  "pm.test(\"Todos los resultados son de Roma\", () => json.viajes.forEach((v) => pm.expect(v.destino.toLowerCase()).to.include(\"roma\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - filtros combinados (fechas y calificación)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes?desde=2025-01-01&hasta=2025-12-31&calificacionMin=4",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Solo viajes de 2025 con calificación >= 4\", () => {",
+                  "    pm.expect(json.viajes.length).to.be.at.least(1);",
+                  "    json.viajes.forEach((v) => {",
+                  "        pm.expect(v.calificacion).to.be.at.least(4);",
+                  "        pm.expect(v.fechaInicio.slice(0, 4)).to.eql(\"2025\");",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - parámetro no permitido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes?usuario=aaaaaaaaaaaaaaaaaaaaaaaa",
+            "description": "Solo se aceptan los filtros definidos: nadie puede filtrar por el usuario de otro."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: usuario no está permitido\", () => pm.expect(pm.response.json().mensaje).to.include(\"usuario no está permitido\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - limit mayor al máximo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes?limit=100",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: limit debe ser menor o igual a 50\", () => pm.expect(pm.response.json().mensaje).to.include(\"limit debe ser menor o igual a 50\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar - administrador ve todos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Ve al menos los 5 viajes del usuario\", () => pm.expect(json.paginacion.total).to.be.at.least(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener por id - dueño",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Es el viaje pedido\", () => pm.expect(json.id).to.eql(pm.collectionVariables.get(\"viaje_id\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener por id - otro usuario (no lo ve)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user_b}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}",
+            "description": "404 y no 403: no se revela que el viaje existe (OWASP API1 - BOLA)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Mensaje de error: Viaje no encontrado\", () => pm.expect(pm.response.json().mensaje).to.include(\"Viaje no encontrado\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener por id - formato inválido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/123",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: El id no tiene un formato válido\", () => pm.expect(pm.response.json().mensaje).to.include(\"El id no tiene un formato válido\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar - exitoso",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"calificacion\": 4,\n    \"notas\": \"Actualizado desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Se actualizaron los campos\", () => {",
+                  "    pm.expect(json.calificacion).to.eql(4);",
+                  "    pm.expect(json.notas).to.eql(\"Actualizado desde Postman\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar - fechaFin anterior a la fechaInicio guardada",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fechaFin\": \"2000-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Mensaje de error: fechaFin no puede ser anterior a fechaInicio\", () => pm.expect(pm.response.json().mensaje).to.include(\"fechaFin no puede ser anterior a fechaInicio\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actualizar - otro usuario (no lo ve)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user_b}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"calificacion\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. IA - itinerario sugerido",
+      "description": "Gemini genera un itinerario día por día. Si la IA no está disponible, responde igual 200 con un itinerario genérico (generadoPorIA: false).",
+      "item": [
+        {
+          "name": "Generar itinerario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}/itinerario",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Devuelve un itinerario día por día\", () => {",
+                  "    pm.expect(json.itinerario).to.be.a(\"string\");",
+                  "    pm.expect(json.itinerario).to.include(\"Día 1\");",
+                  "});",
+                  "pm.test(\"Indica si lo generó la IA\", () => pm.expect(json.generadoPorIA).to.be.a(\"boolean\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Generar itinerario - viaje de otro usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user_b}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}/itinerario",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Generar itinerario - sin token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}/itinerario",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Clima - API de terceros (Open-Meteo)",
+      "description": "Pronóstico, histórico o clima del año anterior como referencia, según las fechas del viaje. Open-Meteo no requiere API key ni tiene límite de uso.",
+      "item": [
+        {
+          "name": "Clima - viaje próximo (pronóstico)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}/clima",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Encuentra la ubicación del destino\", () => pm.expect(json.ubicacion.nombre).to.include(\"Bariloche\"));",
+                  "pm.test(\"Usa el pronóstico\", () => pm.expect(json.tipo).to.eql(\"pronostico\"));",
+                  "pm.test(\"Devuelve un día por cada día del viaje\", () => {",
+                  "    pm.expect(json.dias).to.have.lengthOf(4);",
+                  "    pm.expect(json.dias[0]).to.include.keys(\"fecha\", \"descripcion\", \"temperaturaMaxima\", \"temperaturaMinima\", \"precipitacionMm\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clima - viaje de otro usuario",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user_b}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_id}}/clima",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear viaje con destino inexistente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"titulo\": \"Destino inventado\",\n    \"destino\": \"Xqzwvutpl, Ningunlado\",\n    \"fechaInicio\": \"2026-03-01\",\n    \"fechaFin\": \"2026-03-03\",\n    \"notas\": \"Viaje cargado desde la colección de Postman\",\n    \"calificacion\": 5,\n    \"tipoDeViaje\": \"{{tipo_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set(\"viaje_inexistente_id\", json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clima - destino que no existe en el mapa",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_inexistente_id}}/clima",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Mensaje de error: No se encontró la ubicación\", () => pm.expect(pm.response.json().mensaje).to.include(\"No se encontró la ubicación\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Bajas",
+      "description": "Eliminación de viajes y categorías, con sus restricciones.",
+      "item": [
+        {
+          "name": "Eliminar viaje - otro usuario (no lo ve)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user_b}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_inexistente_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar viaje - exitoso",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_inexistente_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar viaje - ya eliminado",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/viajes/{{viaje_inexistente_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Mensaje de error: Viaje no encontrado\", () => pm.expect(pm.response.json().mensaje).to.include(\"Viaje no encontrado\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar categoría - como usuario (sin permisos)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_user}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar categoría - con viajes asociados",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Mensaje de error: tiene viajes asociados\", () => pm.expect(pm.response.json().mensaje).to.include(\"tiene viajes asociados\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear categoría sin viajes (para eliminar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"nombre\": \"Temporal {{sufijo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set(\"tipo_temporal_id\", json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar categoría - exitoso",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_temporal_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Eliminar categoría - ya eliminada",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_admin}}"
+              }
+            ],
+            "url": "{{prod_base_url}}/tipos-de-viaje/{{tipo_temporal_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Mensaje de error: Tipo de viaje no encontrado\", () => pm.expect(pm.response.json().mensaje).to.include(\"Tipo de viaje no encontrado\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "prod_base_url",
+      "value": "https://obligatorio1-full-stack.vercel.app/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "admin_identificador",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "admin_password",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sufijo",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_username",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_password",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_b_username",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_b_email",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "token_user",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "token_user_b",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "token_admin",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tipo_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tipo_temporal_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "viaje_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "viaje_inexistente_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_inicio_proxima",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fecha_fin_proxima",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
